@@ -2,64 +2,74 @@
 
 > **Your Private, AI-Powered Terminal Operating System.**
 
-PrivyOS to niestandardowa dystrybucja Linuksa oparta na **Debian 12 (Bookworm)**, zaprojektowana w jednym celu: dostarczenie potężnego, lokalnego asystenta AI bezpośrednio w terminalu, z pełnym poszanowaniem prywatności.
+PrivyOS is a custom Linux distribution based on **Debian 12 (Bookworm)**, engineered with a single goal: to deliver a powerful, local AI assistant directly into your terminal experience, with complete privacy respect.
 
-## ✨ Główne Funkcje
+![PrivyOS Banner](https://via.placeholder.com/800x200?text=PrivyOS+v1.1+-+Local+AI+Terminal)
 
-*   **🧠 Wbudowane AI:** Działa na silniku **Ollama** z modelem `qwen2.5-coder:1.5b` (zoptymalizowany pod kątem kodu i lekkości).
-*   **🐚 Privy Shell:** Domyślna powłoka zastępująca Basha. Przetwarza język naturalny (Polski/Angielski) na komendy systemowe.
-    *   *Przykład:* Wpisz "zaktualizuj system", a on wykona `sudo apt update && sudo apt upgrade`.
-*   **🔒 100% Offline & Private:** Wszystkie obliczenia AI odbywają się lokalnie na Twoim CPU. Żadne dane nie wychodzą do chmury.
-*   **⚡ Live System:** Działa bezpośrednio z USB (Live ISO).
-*   **🧠 Pamięć Kontekstowa (v1.1):** Asystent pamięta historię Twoich ostatnich komend, więc możesz dopytywać o szczegóły.
+## ✨ Key Features
 
-## 🚀 Jak używać?
+*   **🧠 Embedded AI:** Powered by the **Ollama** engine running the `qwen2.5-coder:1.5b` model (optimized for code generation and low resource usage).
+*   **🐚 Privy Shell:** A custom default shell that replaces standard Bash. It translates natural language requests into executable system commands.
+*   **🔒 100% Offline & Private:** All AI computations happen locally on your CPU. No data leaves your machine.
+*   **⚡ Live System:** Runs directly from a USB drive (Live ISO).
+*   **🧠 Context Memory (v1.1):** The assistant remembers your recent command history, allowing for follow-up questions and corrections.
 
-1.  **Pobierz/Zbuduj** obraz ISO.
-2.  Nagraj go na pendrive (używając BalenaEtcher, Rufus lub `dd`).
-3.  Uruchom komputer z USB.
-4.  Po załadowaniu systemu zobaczysz prompt `PrivyOS`. Po prostu wpisz, co chcesz zrobić!
+## 🚀 How to Use
 
-### Przykładowe komendy:
+1.  **Download/Build** the ISO image.
+2.  Burn it to a USB drive (using BalenaEtcher, Rufus, or `dd`).
+3.  Boot your computer from the USB.
+4.  Once the system loads, you will be greeted by the `PrivyOS` prompt. Just type what you want to do!
+
+### 💡 Pro Tip
+**For the best results and most accurate command generation, we highly recommend interacting with the shell in English.**
+
+### Usage Examples:
+
 ```text
-PrivyOS /home/user > pokaż mi adres IP
-Sugestia: ip a
-Wykonać? [Y/n]: y
+PrivyOS /home/user > show me my IP address
+Suggestion: ip a
+Execute? [Y/n]: y
 
-PrivyOS /home/user > znajdź wszystkie pliki pdf w tym katalogu
-Sugestia: find . -name "*.pdf"
+PrivyOS /home/user > find all pdf files in this directory
+Suggestion: find . -name "*.pdf"
+Execute? [Y/n]: y
+
+PrivyOS /home/user > create a new folder named 'project' and go into it
+Suggestion: mkdir project && cd project
+Execute? [Y/n]: y
 ```
 
-## 🛠️ Budowanie ze źródeł
+## 🛠️ Building from Source
 
-Wymagany jest **Docker**. Proces budowania tworzy środowisko Debiana i generuje plik ISO.
+**Docker** is recommended for a consistent build environment. The process creates a Debian bootstrap and generates the final ISO.
 
-1.  Sklonuj repozytorium:
+1.  Clone the repository:
     ```bash
-    git clone https://github.com/twoj-user/privyos-build.git
+    git clone https://github.com/your-username/privyos-build.git
     cd privyos-build
     ```
 
-2.  Uruchom skrypt budujący:
+2.  Run the build script:
     ```bash
     ./build.sh
     ```
-    *Proces może potrwać 15-45 minut w zależności od łącza i procesora.*
+    *The process may take 15-45 minutes depending on your internet connection and hardware.*
 
-3.  Wynikowy plik `live-image-amd64.hybrid.iso` pojawi się w głównym katalogu.
+3.  The resulting file `live-image-amd64.hybrid.iso` will appear in the root directory.
 
-## 🏗️ Struktura Projektu
+## 🏗️ Project Structure
 
-*   `config/` - Główna konfiguracja `live-build`.
-    *   `hooks/` - Skrypty uruchamiane podczas budowania (instalacja Ollama, konfiguracja shella).
-    *   `includes.chroot/` - Pliki kopiowane bezpośrednio do systemu (kod źródłowy `privy`).
-    *   `package-lists/` - Lista pakietów instalowanych w systemie.
-*   `build.sh` - Automat do budowania w Dockerze.
+*   `config/` - Main `live-build` configuration.
+    *   `hooks/` - Scripts executed during the build process (Ollama installation, shell configuration).
+    *   `includes.chroot/` - Files copied directly into the OS filesystem (source code for `privy`).
+    *   `package-lists/` - Lists of packages to be installed.
+*   `build.sh` - Docker automated build script.
 
 ## 📝 Changelog
 
-Zobacz plik [CHANGELOG.md](CHANGELOG.md) dla historii zmian.
+See [CHANGELOG.md](CHANGELOG.md) for the version history.
 
-## 📄 Licencja
+## 📄 License
 
 MIT License.
