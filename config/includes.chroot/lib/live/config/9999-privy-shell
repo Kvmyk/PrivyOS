@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Wymuszenie Privy Shell dla użytkownika Live i Roota
+# Ten skrypt uruchamia się przy starcie systemu (live-config)
+
+# 1. Zmień shella dla użytkownika 'user' (domyślny user w Debian Live)
+if id "user" >/dev/null 2>&1; then
+    usermod -s /usr/local/bin/privy user
+fi
+
+# 2. Zmień shella dla roota (dla pewności)
+usermod -s /usr/local/bin/privy root
