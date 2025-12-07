@@ -1,0 +1,23 @@
+# Debian Live Build - Ignore artifacts and cache
+
+# Build directories (duże i tymczasowe)
+.build/
+binary/
+cache/
+chroot/
+
+# Generated artifacts in root (obrazy i listy plików)
+binary.modified_timestamps
+chroot.files
+chroot.packages.*
+chroot.*
+live-image-*
+*.iso
+*.iso.zsync
+*.img
+*.tar.gz
+*.tar.xz
+
+# Logs and temp files
+*.log
+.DS_Store

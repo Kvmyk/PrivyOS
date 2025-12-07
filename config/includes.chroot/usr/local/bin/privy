@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+import sys
+import os
+import subprocess
+import requests
+import json
+import time
+
+# Konfiguracja
+MODEL = "qwen2.5-coder:3b"
+OLLAMA_API = "http://localhost:11434/api/generate"
+OLLAMA_CHECK = "http://localhost:11434/api/tags"
+
+# Kolory ANSI dla klimatu PrivyOS
+CYAN = "\033[96m"
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+RESET = "\033[0m"
+
+def check_ollama_ready():
+    """Sprawdza czy Ollama działa i czy model jest pobrany"""
+    print(f"{YELLOW}[System] Inicjalizacja silnika AI...{RESET}")
+    max_retries = 5
+    for _ in range(max_retries):
+        try:
+            # 1. Czy serwer żyje?
+            r = requests.get(OLLAMA_CHECK)
+            if r.status_code == 200:
+                # 2. Czy model jest?
+                models = [m['name'] for m in r.json()['models']]
+                if MODEL not in models and f"{MODEL}:latest" not in models:
+                    print(f"{RED}[System] Model {MODEL} nie znaleziony. Pobieranie (to może chwilę potrwać)...{RESET}")
+                    subprocess.run(f"ollama pull {MODEL}", shell=True)
+                return True
+        except:
+            time.sleep(2)
+            pass
+    return False
+
+def get_ai_command(user_query):
+    prompt = f"""You are a Linux Bash expert. Convert the user's natural language request into a specific, executable BASH command.
+    RULES:
+    1. Output ONLY the command. No markdown, no explanations.
+    2. Be concise.
+    3. If the user asks something dangerous, warn them in the command (e.g., echo "Warning...").
+    
+    User Request: {user_query}
+    Command:"""
+    
+    try:
+        response = requests.post(OLLAMA_API, json={
+            "model": MODEL,
+            "prompt": prompt,
+            "stream": False
+        })
+        return response.json()['response'].strip()
+    except Exception as e:
+        return f"echo 'Błąd połączenia z mózgiem: {e}'"
+
+def main():
+    os.system('clear')
+    print(f"{CYAN}Welcome to PrivyOS v1.0{RESET}")
+    print("Local AI Wrapper initialized. Type naturally.")
+    print("-" * 50)
+
+    if not check_ollama_ready():
+        print(f"{RED}BŁĄD: Ollama nie odpowiada. Sprawdź usługę systemową.{RESET}")
+        return
+
+    while True:
+        try:
+            cwd = os.getcwd()
+            # Ładny prompt
+            user_input = input(f"{GREEN}PrivyOS {CYAN}{cwd}{RESET} > ")
+            
+            if not user_input.strip(): continue
+            if user_input.lower() in ['exit', 'logout']: break
+            
+            # Obsługa natywnych komend (żeby nie pytać AI o "ls")
+            if user_input.split()[0] in ['ls', 'cd', 'clear', 'top', 'htop', 'reboot', 'poweroff']:
+                if user_input.startswith('cd '):
+                    try:
+                        os.chdir(user_input[3:].strip())
+                    except FileNotFoundError:
+                        print(f"{RED}Katalog nie istnieje.{RESET}")
+                else:
+                    os.system(user_input)
+                continue
+
+            # Zapytanie do AI
+            print(f"{YELLOW}Thinking...{RESET}", end="\r")
+            cmd = get_ai_command(user_input)
+            
+            # Wyczyść linię "Thinking..."
+            print(" " * 20, end="\r")
+            
+            print(f"Sugestia: {CYAN}{cmd}{RESET}")
+            confirm = input("Wykonać? [Y/n]: ")
+            
+            if confirm.lower() in ['y', '']:
+                if cmd.startswith("cd "):
+                     try:
+                        os.chdir(cmd[3:].strip())
+                     except:
+                        print(f"{RED}Błąd zmiany katalogu.{RESET}")
+                else:
+                    subprocess.run(cmd, shell=True)
+            
+        except KeyboardInterrupt:
+            print("\nUżyj 'exit' aby wyjść.")
+
+if __name__ == "__main__":
+    main()
