@@ -21,3 +21,6 @@ live-image-*
 # Logs and temp files
 *.log
 .DS_Store
+
+# Documentation
+GEMINI.md

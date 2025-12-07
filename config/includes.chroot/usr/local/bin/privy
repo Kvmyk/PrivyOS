@@ -7,9 +7,10 @@ import json
 import time
 
 # Konfiguracja
-MODEL = "qwen2.5-coder:3b"
+MODEL = "qwen2.5-coder:1.5b"
 OLLAMA_API = "http://localhost:11434/api/generate"
 OLLAMA_CHECK = "http://localhost:11434/api/tags"
+HISTORY_LIMIT = 3  # Ile ostatnich par (pytanie-odpowiedź) pamiętamy
 
 # Kolory ANSI dla klimatu PrivyOS
 CYAN = "\033[96m"
@@ -38,13 +39,30 @@ def check_ollama_ready():
             pass
     return False
 
-def get_ai_command(user_query):
-    prompt = f"""You are a Linux Bash expert. Convert the user's natural language request into a specific, executable BASH command.
+def get_ai_command(user_query, history):
+    history_text = ""
+    if history:
+        history_text = "PREVIOUS CONTEXT:\n"
+        for item in history:
+            history_text += f"User: {item['user']}\nLast Command: {item['cmd']}\nResult: {item['status']}\n---\n"
+
+    prompt = f"""You are a Linux Bash expert. Your task is to convert the user's request (in Polish or English) into a single, valid, executable BASH command.
+
     RULES:
-    1. Output ONLY the command. No markdown, no explanations.
-    2. Be concise.
-    3. If the user asks something dangerous, warn them in the command (e.g., echo "Warning...").
-    
+    1. OUTPUT ONLY THE COMMAND. Do NOT use markdown code blocks (like ```bash). Do NOT add explanations.
+    2. If the user asks for a complex task, chain commands using && or ;.
+    3. If the request is dangerous (e.g. "delete everything"), prefix the command with: echo "DANGEROUS: " && ...
+    4. Support both Polish and English inputs effectively.
+    5. USE THE CONTEXT. If the user refers to "it" or "that file", look at the PREVIOUS CONTEXT.
+
+    {history_text}
+
+    EXAMPLES:
+    User: "list files" -> ls -la
+    User: "pokaż pliki" -> ls -la
+    User: "update system" -> sudo apt update && sudo apt upgrade -y
+    User: "znajdź pliki tekstowe" -> find . -name "*.txt"
+
     User Request: {user_query}
     Command:"""
     
@@ -52,21 +70,58 @@ def get_ai_command(user_query):
         response = requests.post(OLLAMA_API, json={
             "model": MODEL,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "options": {
+                "temperature": 0.1
+            }
         })
-        return response.json()['response'].strip()
+        # Dodatkowe czyszczenie na wypadek gdyby model jednak dodał markdown
+        cmd = response.json()['response'].strip()
+        if cmd.startswith("```"):
+            lines = cmd.splitlines()
+            # Często pierwsza linia to ```bash, a ostatnia ```
+            if len(lines) >= 3:
+                cmd = "\n".join(lines[1:-1])
+            else:
+                cmd = cmd.replace("```bash", "").replace("```", "")
+        return cmd.strip()
     except Exception as e:
         return f"echo 'Błąd połączenia z mózgiem: {e}'"
 
+def print_banner():
+    """Wyświetla ASCII Art przy starcie"""
+    print(f"{CYAN}")
+    print(r"""
+    ____       _            ____  _____
+   / __ \_____(_)   ___  __/ __ \/ __ \
+  / /_/ / ___/ / | / / / / / / /\__ \ 
+ / ____/ /  / /| |/ / /_/ / /_/ /__/ / 
+/_/   /_/  /_/ |___/\__, /\____/____/  
+                   /____/              
+    """)
+    print(f"{RESET}")
+    print(f"PrivyOS v1.1 - Local AI Terminal")
+    print("-" * 50)
+
 def main():
     os.system('clear')
-    print(f"{CYAN}Welcome to PrivyOS v1.0{RESET}")
-    print("Local AI Wrapper initialized. Type naturally.")
-    print("-" * 50)
+    print_banner()
 
     if not check_ollama_ready():
         print(f"{RED}BŁĄD: Ollama nie odpowiada. Sprawdź usługę systemową.{RESET}")
         return
+
+    # Lista komend, które wykonujemy lokalnie (bez pytania AI)
+    NATIVE_COMMANDS = [
+        'ls', 'cd', 'pwd', 'cat', 'more', 'less', 'grep', 'cp', 'mv', 'rm', 
+        'mkdir', 'rmdir', 'touch', 'nano', 'vim', 'vi', 'sudo', 'su', 
+        'whoami', 'id', 'ip', 'ifconfig', 'ping', 'top', 'htop', 'free', 
+        'df', 'du', 'ps', 'kill', 'killall', 'reboot', 'poweroff', 'shutdown', 
+        'clear', 'history', 'exit', 'logout', 'man', 'help'
+    ]
+
+    # Historia konwersacji (dla kontekstu)
+    history = []
 
     while True:
         try:
@@ -77,20 +132,40 @@ def main():
             if not user_input.strip(): continue
             if user_input.lower() in ['exit', 'logout']: break
             
-            # Obsługa natywnych komend (żeby nie pytać AI o "ls")
-            if user_input.split()[0] in ['ls', 'cd', 'clear', 'top', 'htop', 'reboot', 'poweroff']:
+            cmd_root = user_input.split()[0]
+            
+            # Obsługa natywnych komend
+            if cmd_root in NATIVE_COMMANDS:
                 if user_input.startswith('cd '):
                     try:
-                        os.chdir(user_input[3:].strip())
+                        path = user_input[3:].strip()
+                        # Obsługa ~ (home)
+                        if path.startswith('~'):
+                            path = os.path.expanduser(path)
+                        os.chdir(path)
+                        # Aktualizuj historię sukcesem (żeby AI wiedziało gdzie jesteśmy)
+                        if len(history) >= HISTORY_LIMIT: history.pop(0)
+                        history.append({'user': user_input, 'cmd': f"cd {path}", 'status': 'Success (Changed Directory)'})
                     except FileNotFoundError:
                         print(f"{RED}Katalog nie istnieje.{RESET}")
+                    except Exception as e:
+                        print(f"{RED}Błąd: {e}{RESET}")
+                elif cmd_root == 'cd' and len(user_input.strip()) == 2:
+                     # Sam 'cd' wraca do home
+                     os.chdir(os.path.expanduser('~'))
                 else:
-                    os.system(user_input)
+                    ret = os.system(user_input)
+                    # Spróbuj dodać do historii (uproszczone statusy dla os.system)
+                    status = "Success" if ret == 0 else "Failed"
+                    if len(history) >= HISTORY_LIMIT: history.pop(0)
+                    history.append({'user': user_input, 'cmd': user_input, 'status': status})
                 continue
 
             # Zapytanie do AI
             print(f"{YELLOW}Thinking...{RESET}", end="\r")
-            cmd = get_ai_command(user_input)
+            
+            # Przekazujemy historię
+            cmd = get_ai_command(user_input, history)
             
             # Wyczyść linię "Thinking..."
             print(" " * 20, end="\r")
@@ -99,13 +174,26 @@ def main():
             confirm = input("Wykonać? [Y/n]: ")
             
             if confirm.lower() in ['y', '']:
+                status = "Skipped"
                 if cmd.startswith("cd "):
                      try:
                         os.chdir(cmd[3:].strip())
+                        status = "Success (Changed Directory)"
                      except:
                         print(f"{RED}Błąd zmiany katalogu.{RESET}")
+                        status = "Failed (Invalid Directory)"
                 else:
-                    subprocess.run(cmd, shell=True)
+                    # Używamy subprocess, żeby złapać exit code lepiej
+                    try:
+                        result = subprocess.run(cmd, shell=True)
+                        status = "Success" if result.returncode == 0 else "Failed (Non-zero exit code)"
+                    except Exception as e:
+                         print(f"{RED}Error executing command: {e}{RESET}")
+                         status = f"Error: {e}"
+                
+                # Dodaj do historii
+                if len(history) >= HISTORY_LIMIT: history.pop(0)
+                history.append({'user': user_input, 'cmd': cmd, 'status': status})
             
         except KeyboardInterrupt:
             print("\nUżyj 'exit' aby wyjść.")

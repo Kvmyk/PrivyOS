@@ -4,10 +4,20 @@ set -e
 # 1. Instalacja Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 2. Ustawienie Privy Shell jako domyślnej powłoki dla roota i nowego usera
-# Uwaga: live-build tworzy użytkownika 'user', my nadpiszemy mu shella
-echo "Zmiana shella na PrivyOS..."
-echo "/usr/local/bin/privy" >> /etc/shells
+# 2. Ustawienie Privy Shell jako domyślnej powłoki
+# Dodajemy do listy zaufanych powłok
+if ! grep -q "/usr/local/bin/privy" /etc/shells; then
+    echo "/usr/local/bin/privy" >> /etc/shells
+fi
+
+# Upewniamy się, że skrypty są wykonywalne
+chmod +x /usr/local/bin/privy
+if [ -f /lib/live/config/9999-privy-shell ]; then
+    chmod +x /lib/live/config/9999-privy-shell
+fi
+
+# Ustawiamy dla roota (w chroot - to zadziała dla roota, ale dla 'user' zadziała skrypt 9999)
+chsh -s /usr/local/bin/privy root
 
 # 3. Włączenie serwisu Ollama
 systemctl enable ollama
