@@ -4,8 +4,6 @@
 
 PrivyOS is a custom Linux distribution based on **Debian 12 (Bookworm)**, engineered with a single goal: to deliver a powerful, local AI assistant directly into your terminal experience, with complete privacy respect.
 
-![PrivyOS Banner](https://via.placeholder.com/800x200?text=PrivyOS+v1.1+-+Local+AI+Terminal)
-
 ## ✨ Key Features
 
 *   **🧠 Embedded AI:** Powered by the **Ollama** engine running the `qwen2.5-coder:1.5b` model (optimized for code generation and low resource usage).
