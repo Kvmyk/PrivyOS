@@ -1,0 +1,27 @@
+#!/bin/bash
+# Magic Network for PrivyOS
+# Attempts to bring up all physical interfaces automatically
+
+echo "Magic Network: Scanning interfaces..."
+
+# Wait a bit for drivers to load
+sleep 2
+
+for iface in $(ls /sys/class/net/); do
+    if [ "$iface" != "lo" ]; then
+        echo "Found interface: $iface"
+        ip link set dev $iface up
+        
+        # Try NetworkManager first
+        if command -v nmcli >/dev/null; then
+             echo "Trying nmcli..."
+             nmcli device connect $iface || echo "nmcli failed for $iface"
+        fi
+        
+        # Fallback to dhclient if no IP
+        if ! ip addr show $iface | grep -q "inet "; then
+             echo "No IP obtained via NM, trying dhclient..."
+             dhclient $iface &
+        fi
+    fi
+done

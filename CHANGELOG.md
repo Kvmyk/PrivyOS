@@ -2,6 +2,56 @@
 
 All notable changes to PrivyOS will be documented in this file.
 
+## [v1.2] - 2025-12-08
+
+### Added
+- **AI Code Generation (Router Mode):** `privy` shell now supports a "Coder Mode" that detects keywords (e.g., "write code", "napisz skrypt") and instructs the AI to generate BASH commands to create code files (`cat << 'EOF' > filename ... EOF`).
+- **Enhanced UI with Rich:** Integrated the `python3-rich` library for a more polished and colorful terminal experience in `privy` shell.
+- **Magic Network Configuration:** Implemented an automatic network setup script (`magic-network.sh`) and systemd service to improve out-of-the-box network connectivity on bare metal hardware.
+- **Persistence Support:** Configured live-build to enable persistence, allowing users to save changes across reboots when booting from a persistent USB drive.
+- **Debian Installer Option:** Added a dedicated Debian Installer option to the boot menu for permanent installation to a hard drive (both text and graphical modes).
+- **Attempted AI Analysis Capabilities:** Began implementing functionality to allow the local AI model to read device information, analyze command outputs (e.g., `top`), and summarize file content.
+
+### Changed
+- **Ollama Optimization:**
+    - Pre-downloaded the default AI model (`qwen2.5-coder:1.5b`) during the build process to a persistent location (`/usr/local/share/ollama/models`), ensuring offline readiness from first boot of the live system.
+    - Added `zram-tools` and `mesa-vulkan-drivers` packages.
+    - Configured CPU governor to `performance` using `cpufrequtils`.
+- **Native Commands Expansion:** Added `python` and `python3` to the `NATIVE_COMMANDS` list in `privy` to prevent AI interception of these commands.
+- **Build Process:** Updated Docker build script to properly incorporate new configurations.
+- **Default Shell after Installation:** Implemented fixes to ensure the `privy` shell is set as the default shell for users created during installation via both Debian Installer (using preseed configuration) and Calamares (configuring `users.conf`).
+
+### Fixed
+- **Ollama Model Persistence:** Corrected an issue where the Ollama model was being re-downloaded on live system boot by ensuring it's installed to a persistent location during the build.
+- **Privy Shell Not Default After Installation:** Resolved an issue where the `privy` shell was not set as the default for installed users; now configured via preseed and Calamares.
+
+---
+
+## [v1.1] - 2025-12-07
+
+### Added
+- **AI Code Generation (Router Mode):** `privy` shell now supports a "Coder Mode" that detects keywords (e.g., "write code", "napisz skrypt") and instructs the AI to generate BASH commands to create code files (`cat << 'EOF' > filename ... EOF`).
+- **Enhanced UI with Rich:** Integrated the `python3-rich` library for a more polished and colorful terminal experience in `privy` shell.
+- **Magic Network Configuration:** Implemented an automatic network setup script (`magic-network.sh`) and systemd service to improve out-of-the-box network connectivity on bare metal hardware.
+- **Persistence Support:** Configured live-build to enable persistence, allowing users to save changes across reboots when booting from a persistent USB drive.
+- **Debian Installer Option:** Added a dedicated Debian Installer option to the boot menu for permanent installation to a hard drive (both text and graphical modes).
+
+### Changed
+- **Ollama Optimization:**
+    - Pre-downloaded the default AI model (`qwen2.5-coder:1.5b`) during the build process to a persistent location (`/usr/local/share/ollama/models`), ensuring offline readiness from first boot of the live system.
+    - Added `zram-tools` and `mesa-vulkan-drivers` packages.
+    - Configured CPU governor to `performance` using `cpufrequtils`.
+- **Native Commands Expansion:** Added `python` and `python3` to the `NATIVE_COMMANDS` list in `privy` to prevent AI interception of these commands.
+- **Build Process:** Updated Docker build script to properly incorporate new configurations.
+
+### Fixed
+- **Ollama Model Persistence:** Corrected an issue where the Ollama model was being re-downloaded on live system boot by ensuring it's installed to a persistent location during the build.
+
+### Known Issues
+- **Privy Shell Not Default After Installation:** After installing PrivyOS to disk via the Debian Installer, the `privy` shell does not automatically become the default shell for newly created users; it defaults to Bash. This needs to be resolved to maintain the core PrivyOS experience post-installation.
+
+---
+
 ## [v1.1] - 2025-12-07
 
 ### Added

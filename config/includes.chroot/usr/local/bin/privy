@@ -5,81 +5,118 @@ import subprocess
 import requests
 import json
 import time
+import re
+
+# Try importing rich for UI Polish
+try:
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+    from rich.style import Style
+    from rich.text import Text
+    console = Console()
+    HAS_RICH = True
+except ImportError:
+    HAS_RICH = False
 
 # Konfiguracja
 MODEL = "qwen2.5-coder:1.5b"
 OLLAMA_API = "http://localhost:11434/api/generate"
 OLLAMA_CHECK = "http://localhost:11434/api/tags"
-HISTORY_LIMIT = 3  # Ile ostatnich par (pytanie-odpowiedź) pamiętamy
+HISTORY_LIMIT = 5
 
-# Kolory ANSI dla klimatu PrivyOS
+# Fallback Colors
 CYAN = "\033[96m"
 GREEN = "\033[92m"
 RED = "\033[91m"
 YELLOW = "\033[93m"
 RESET = "\033[0m"
 
+def print_styled(text, style="white"):
+    if HAS_RICH:
+        console.print(text, style=style)
+    else:
+        # Basic mapping
+        color = RESET
+        if style == "cyan": color = CYAN
+        elif style == "green": color = GREEN
+        elif style == "red": color = RED
+        elif style == "yellow": color = YELLOW
+        print(f"{color}{text}{RESET}")
+
 def check_ollama_ready():
     """Sprawdza czy Ollama działa i czy model jest pobrany"""
-    print(f"{YELLOW}[System] Inicjalizacja silnika AI...{RESET}")
-    max_retries = 5
+    print_styled(f"[System] Inicjalizacja silnika AI...", "yellow")
+    max_retries = 30
     for _ in range(max_retries):
         try:
-            # 1. Czy serwer żyje?
             r = requests.get(OLLAMA_CHECK)
             if r.status_code == 200:
-                # 2. Czy model jest?
                 models = [m['name'] for m in r.json()['models']]
                 if MODEL not in models and f"{MODEL}:latest" not in models:
-                    print(f"{RED}[System] Model {MODEL} nie znaleziony. Pobieranie (to może chwilę potrwać)...{RESET}")
+                    print_styled(f"[System] Model {MODEL} nie znaleziony. Pobieranie...", "red")
                     subprocess.run(f"ollama pull {MODEL}", shell=True)
                 return True
         except:
             time.sleep(2)
-            pass
     return False
 
+def detect_intent(query):
+    """Simple keyword routing to decide between System Admin and Coder mode"""
+    code_keywords = [
+        "write code", "create script", "generate file", "napisz kod", "stwórz plik", 
+        "napisz skrypt", "program in", "python script", "bash script", "html file"
+    ]
+    query_lower = query.lower()
+    for kw in code_keywords:
+        if kw in query_lower:
+            return "coder"
+    return "admin"
+
 def get_ai_command(user_query, history):
+    intent = detect_intent(user_query)
+    
     history_text = ""
     if history:
         history_text = "PREVIOUS CONTEXT:\n"
         for item in history:
             history_text += f"User: {item['user']}\nLast Command: {item['cmd']}\nResult: {item['status']}\n---\n"
 
-    prompt = f"""You are a Linux Bash expert. Your task is to convert the user's request (in Polish or English) into a single, valid, executable BASH command.
+    if intent == "coder":
+        system_prompt = """You are a Coding Assistant inside a Linux Terminal.
+Your goal is to generate a BASH command that CREATES the requested file.
 
-    RULES:
-    1. OUTPUT ONLY THE COMMAND. Do NOT use markdown code blocks (like ```bash). Do NOT add explanations.
-    2. If the user asks for a complex task, chain commands using && or ;.
-    3. If the request is dangerous (e.g. "delete everything"), prefix the command with: echo "DANGEROUS: " && ...
-    4. Support both Polish and English inputs effectively.
-    5. USE THE CONTEXT. If the user refers to "it" or "that file", look at the PREVIOUS CONTEXT.
+RULES:
+1. Use 'cat << 'EOF' > filename' pattern to create files.
+2. If the user just asks for code without a filename, invent a sensible filename.
+3. OUTPUT ONLY THE BASH COMMAND to create the file. No explanations.
+4. Ensure the content inside EOF is correct code.
+"""
+    else:
+        system_prompt = """You are a Linux Bash expert. Your task is to convert the user's request (in Polish or English) into a single, valid, executable BASH command.
 
-    {history_text}
+RULES:
+1. OUTPUT ONLY THE COMMAND. Do NOT use markdown code blocks (like ```bash). Do NOT add explanations.
+2. If the user asks for a complex task, chain commands using && or ;.
+3. If the request is dangerous (e.g. "delete everything"), prefix the command with: echo "DANGEROUS: " && ...
+4. Support both Polish and English inputs effectively.
+5. USE THE CONTEXT. If the user refers to "it" or "that file", look at the PREVIOUS CONTEXT.
+"""
 
-    EXAMPLES:
-    User: "list files" -> ls -la
-    User: "pokaż pliki" -> ls -la
-    User: "update system" -> sudo apt update && sudo apt upgrade -y
-    User: "znajdź pliki tekstowe" -> find . -name "*.txt"
-
-    User Request: {user_query}
-    Command:"""
+    prompt = f"{system_prompt}\n\n{history_text}\nUser Request: {user_query}\nCommand:"
     
     try:
         response = requests.post(OLLAMA_API, json={
             "model": MODEL,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": 0.1
-            }
+            "options": {"temperature": 0.1}
         })
-        # Dodatkowe czyszczenie na wypadek gdyby model jednak dodał markdown
         cmd = response.json()['response'].strip()
+        
+        # Cleanup markdown
         if cmd.startswith("```"):
             lines = cmd.splitlines()
-            # Często pierwsza linia to ```bash, a ostatnia ```
             if len(lines) >= 3:
                 cmd = "\n".join(lines[1:-1])
             else:
@@ -89,109 +126,114 @@ def get_ai_command(user_query, history):
         return f"echo 'Błąd połączenia z mózgiem: {e}'"
 
 def print_banner():
-    """Wyświetla ASCII Art przy starcie"""
-    print(f"{CYAN}")
-    print(r"""
-    ____       _            ____  _____
-   / __ \_____(_)   ___  __/ __ \/ __ \
+    if HAS_RICH:
+        title = """
+    ____       _            ____  _____ 
+   / __ \_____(_)   ___  __/ __ \/ __ \ 
   / /_/ / ___/ / | / / / / / / /\__ \ 
  / ____/ /  / /| |/ / /_/ / /_/ /__/ / 
 /_/   /_/  /_/ |___/\__, /\____/____/  
                    /____/              
-    """)
-    print(f"{RESET}")
-    print(f"PrivyOS v1.1 - Local AI Terminal")
-    print("-" * 50)
+"""
+        panel = Panel(
+            Text(title, style="cyan bold") + Text("\nPrivyOS v1.2 - Local AI Terminal", style="white"),
+            border_style="cyan"
+        )
+        console.print(panel)
+    else:
+        print(f"{CYAN}PrivyOS v1.2{RESET}")
 
 def main():
     os.system('clear')
     print_banner()
 
+    ai_enabled = True
     if not check_ollama_ready():
-        print(f"{RED}BŁĄD: Ollama nie odpowiada. Sprawdź usługę systemową.{RESET}")
-        return
+        print_styled("OSTRZEŻENIE: System AI nie odpowiada. Przełączono w tryb awaryjny (tylko komendy natywne).", "red")
+        print_styled("Spróbuj: systemctl restart ollama", "yellow")
+        ai_enabled = False
 
-    # Lista komend, które wykonujemy lokalnie (bez pytania AI)
     NATIVE_COMMANDS = [
         'ls', 'cd', 'pwd', 'cat', 'more', 'less', 'grep', 'cp', 'mv', 'rm', 
         'mkdir', 'rmdir', 'touch', 'nano', 'vim', 'vi', 'sudo', 'su', 
         'whoami', 'id', 'ip', 'ifconfig', 'ping', 'top', 'htop', 'free', 
         'df', 'du', 'ps', 'kill', 'killall', 'reboot', 'poweroff', 'shutdown', 
-        'clear', 'history', 'exit', 'logout', 'man', 'help'
+        'clear', 'history', 'exit', 'logout', 'man', 'help', 'python', 'python3',
+        'systemctl', 'journalctl'
     ]
 
-    # Historia konwersacji (dla kontekstu)
     history = []
 
     while True:
         try:
             cwd = os.getcwd()
-            # Ładny prompt
-            user_input = input(f"{GREEN}PrivyOS {CYAN}{cwd}{RESET} > ")
+            # Input Prompt
+            prompt_color = GREEN if ai_enabled else RED
+            mode_str = "" if ai_enabled else " [OFFLINE]"
+            
+            if HAS_RICH:
+                # Rich doesn't have a direct 'input' with complex styling behaving exactly like readline
+                # So we stick to standard input but color the prompt manually
+                p_style = "\033[92m" if ai_enabled else "\033[91m"
+                user_input = input(f"{p_style}PrivyOS{mode_str} \033[96m{cwd}\033[0m > ")
+            else:
+                user_input = input(f"{prompt_color}PrivyOS{mode_str} {CYAN}{cwd}{RESET} > ")
             
             if not user_input.strip(): continue
             if user_input.lower() in ['exit', 'logout']: break
             
             cmd_root = user_input.split()[0]
             
-            # Obsługa natywnych komend
+            # Native Commands
             if cmd_root in NATIVE_COMMANDS:
-                if user_input.startswith('cd '):
+                if cmd_root == 'cd':
+                    path = user_input[3:].strip()
+                    if not path: path = os.path.expanduser('~')
+                    if path.startswith('~'): path = os.path.expanduser(path)
                     try:
-                        path = user_input[3:].strip()
-                        # Obsługa ~ (home)
-                        if path.startswith('~'):
-                            path = os.path.expanduser(path)
                         os.chdir(path)
-                        # Aktualizuj historię sukcesem (żeby AI wiedziało gdzie jesteśmy)
                         if len(history) >= HISTORY_LIMIT: history.pop(0)
-                        history.append({'user': user_input, 'cmd': f"cd {path}", 'status': 'Success (Changed Directory)'})
-                    except FileNotFoundError:
-                        print(f"{RED}Katalog nie istnieje.{RESET}")
+                        history.append({'user': user_input, 'cmd': f"cd {path}", 'status': 'Success'})
                     except Exception as e:
-                        print(f"{RED}Błąd: {e}{RESET}")
-                elif cmd_root == 'cd' and len(user_input.strip()) == 2:
-                     # Sam 'cd' wraca do home
-                     os.chdir(os.path.expanduser('~'))
+                        print_styled(f"Error: {e}", "red")
                 else:
                     ret = os.system(user_input)
-                    # Spróbuj dodać do historii (uproszczone statusy dla os.system)
                     status = "Success" if ret == 0 else "Failed"
                     if len(history) >= HISTORY_LIMIT: history.pop(0)
                     history.append({'user': user_input, 'cmd': user_input, 'status': status})
                 continue
 
-            # Zapytanie do AI
-            print(f"{YELLOW}Thinking...{RESET}", end="\r")
-            
-            # Przekazujemy historię
+            # AI Command logic
+            if not ai_enabled:
+                print_styled("Błąd: AI niedostępne. Użyj komend natywnych lub napraw Ollamę.", "red")
+                continue
+
+            print("Thinking...", end="\r")
             cmd = get_ai_command(user_input, history)
-            
-            # Wyczyść linię "Thinking..."
             print(" " * 20, end="\r")
             
-            print(f"Sugestia: {CYAN}{cmd}{RESET}")
+            if HAS_RICH:
+                console.print(Panel(Text(cmd, style="green"), title="AI Suggestion", border_style="green"))
+            else:
+                print(f"Sugestia: {CYAN}{cmd}{RESET}")
+
             confirm = input("Wykonać? [Y/n]: ")
             
             if confirm.lower() in ['y', '']:
-                status = "Skipped"
                 if cmd.startswith("cd "):
                      try:
                         os.chdir(cmd[3:].strip())
-                        status = "Success (Changed Directory)"
+                        status = "Success"
                      except:
-                        print(f"{RED}Błąd zmiany katalogu.{RESET}")
-                        status = "Failed (Invalid Directory)"
+                        status = "Failed"
                 else:
-                    # Używamy subprocess, żeby złapać exit code lepiej
                     try:
                         result = subprocess.run(cmd, shell=True)
-                        status = "Success" if result.returncode == 0 else "Failed (Non-zero exit code)"
+                        status = "Success" if result.returncode == 0 else "Failed"
                     except Exception as e:
-                         print(f"{RED}Error executing command: {e}{RESET}")
+                         print_styled(f"Error: {e}", "red")
                          status = f"Error: {e}"
                 
-                # Dodaj do historii
                 if len(history) >= HISTORY_LIMIT: history.pop(0)
                 history.append({'user': user_input, 'cmd': cmd, 'status': status})
             

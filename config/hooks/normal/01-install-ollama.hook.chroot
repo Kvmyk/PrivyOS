@@ -1,23 +1,78 @@
 #!/bin/sh
 set -e
 
-# 1. Instalacja Ollama
+# 1. Install Ollama
+echo "Installing Ollama..."
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 2. Ustawienie Privy Shell jako domyślnej powłoki
-# Dodajemy do listy zaufanych powłok
+# 2. Configure Privy Shell
+echo "Configuring Privy Shell..."
 if ! grep -q "/usr/local/bin/privy" /etc/shells; then
     echo "/usr/local/bin/privy" >> /etc/shells
 fi
 
-# Upewniamy się, że skrypty są wykonywalne
+# Force system-wide default shell for new users (fixes Calamares/Installer ignoring users.conf)
+# Strategy: Comment out any existing definition and append our own to ensure it takes precedence.
+if [ -f /etc/adduser.conf ]; then
+    sed -i 's|^DSHELL=.*|#DSHELL=modified_by_privy_hook|' /etc/adduser.conf
+    echo "DSHELL=/usr/local/bin/privy" >> /etc/adduser.conf
+fi
+
+if [ -f /etc/default/useradd ]; then
+    sed -i 's|^SHELL=.*|#SHELL=modified_by_privy_hook|' /etc/default/useradd
+    echo "SHELL=/usr/local/bin/privy" >> /etc/default/useradd
+else
+    echo "SHELL=/usr/local/bin/privy" > /etc/default/useradd
+fi
+
 chmod +x /usr/local/bin/privy
 if [ -f /lib/live/config/9999-privy-shell ]; then
     chmod +x /lib/live/config/9999-privy-shell
 fi
 
-# Ustawiamy dla roota (w chroot - to zadziała dla roota, ale dla 'user' zadziała skrypt 9999)
 chsh -s /usr/local/bin/privy root
 
-# 3. Włączenie serwisu Ollama
+# 3. Configure Performance & Services
+echo "Configuring System Services..."
+# CPU Governor
+echo 'GOVERNOR="performance"' > /etc/default/cpufrequtils
+
+# Enable services
 systemctl enable ollama
+systemctl enable magic-network
+systemctl enable cpufrequtils
+
+# ZRAM (should be enabled by default if package installed, but ensure it)
+# systemctl enable zramswap  <-- Package usually handles this, but strictly speaking 'zram-tools' uses a service.
+# Let's check package name. 'zram-tools' usually creates a service.
+
+# 4. Pre-download Model
+echo "Starting Ollama to pull model (qwen2.5-coder:1.5b)..."
+# We need to run it in background. 
+# Note: In chroot, there is no systemd running, so we run the binary directly.
+ollama serve > /var/log/ollama_build.log 2>&1 &
+PID=$!
+
+# Wait for it to respond
+tries=0
+while [ $tries -lt 30 ]; do
+    if curl -s http://localhost:11434/api/tags >/dev/null; then
+        echo "Ollama is up."
+        break
+    fi
+    echo "Waiting for Ollama ($tries)..."
+    sleep 2
+    tries=$((tries+1))
+done
+
+if [ $tries -lt 30 ]; then
+    echo "Pulling model..."
+    ollama pull qwen2.5-coder:1.5b
+else
+    echo "WARNING: Ollama did not start in time. Model not pulled."
+    cat /var/log/ollama_build.log
+fi
+
+echo "Stopping Ollama..."
+kill $PID || true
+wait $PID || true

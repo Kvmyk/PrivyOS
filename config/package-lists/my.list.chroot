@@ -1,5 +1,6 @@
 python3
 python3-requests
+python3-rich
 curl
 systemd
 pciutils
@@ -12,3 +13,12 @@ grub-efi-amd64
 grub-pc-bin
 syslinux-utils
 syslinux-common
+zram-tools
+cpufrequtils
+mesa-vulkan-drivers
+debian-installer-launcher
+ethtool
+net-tools
+user-setup
+calamares
+calamares-settings-debian
