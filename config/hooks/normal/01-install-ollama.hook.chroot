@@ -42,14 +42,25 @@ systemctl enable ollama
 systemctl enable magic-network
 systemctl enable cpufrequtils
 
-# ZRAM (should be enabled by default if package installed, but ensure it)
-# systemctl enable zramswap  <-- Package usually handles this, but strictly speaking 'zram-tools' uses a service.
-# Let's check package name. 'zram-tools' usually creates a service.
+# 3b. Configure Persistent Ollama Environment (CRITICAL FOR OFFLINE MODEL)
+echo "Configuring persistent Ollama environment paths..."
+mkdir -p /etc/systemd/system/ollama.service.d
+cat <<EOF > /etc/systemd/system/ollama.service.d/environment.conf
+[Service]
+Environment="OLLAMA_MODELS=/usr/share/ollama/.ollama"
+EOF
 
 # 4. Pre-download Model
 echo "Starting Ollama to pull model (qwen2.5-coder:1.5b)..."
-# We need to run it in background. 
-# Note: In chroot, there is no systemd running, so we run the binary directly.
+
+# Create the directory where the systemd service expects models
+mkdir -p /usr/share/ollama/.ollama
+chown ollama:ollama /usr/share/ollama/.ollama
+
+# Set environment variable so the build-time server writes to the correct place
+export OLLAMA_MODELS="/usr/share/ollama/.ollama"
+
+# Run ollama serve in background
 ollama serve > /var/log/ollama_build.log 2>&1 &
 PID=$!
 
@@ -68,6 +79,11 @@ done
 if [ $tries -lt 30 ]; then
     echo "Pulling model..."
     ollama pull qwen2.5-coder:1.5b
+    
+    # CRITICAL: Fix permissions so the 'ollama' user can read these files at runtime
+    echo "Fixing permissions for Ollama models..."
+    chown -R ollama:ollama /usr/share/ollama
+    chmod -R 755 /usr/share/ollama
 else
     echo "WARNING: Ollama did not start in time. Model not pulled."
     cat /var/log/ollama_build.log

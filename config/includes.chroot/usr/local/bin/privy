@@ -73,57 +73,134 @@ def detect_intent(query):
             return "coder"
     return "admin"
 
-def get_ai_command(user_query, history):
+def process_ai_interaction(user_query, history):
     intent = detect_intent(user_query)
     
-    history_text = ""
+    # Build Context History
+    context_str = ""
     if history:
-        history_text = "PREVIOUS CONTEXT:\n"
+        context_str = "PREVIOUS CONTEXT:\n"
         for item in history:
-            history_text += f"User: {item['user']}\nLast Command: {item['cmd']}\nResult: {item['status']}\n---\n"
+            context_str += f"User: {item['user']}\nLast Command: {item['cmd']}\nResult: {item['status']}\n---\n"
 
+    # Base System Prompts
     if intent == "coder":
-        system_prompt = """You are a Coding Assistant inside a Linux Terminal.
-Your goal is to generate a BASH command that CREATES the requested file.
-
-RULES:
-1. Use 'cat << 'EOF' > filename' pattern to create files.
-2. If the user just asks for code without a filename, invent a sensible filename.
-3. OUTPUT ONLY THE BASH COMMAND to create the file. No explanations.
-4. Ensure the content inside EOF is correct code.
-"""
+        system_instruction = """You are a Coding Assistant. Generate BASH commands to CREATE files using 'cat << EOF'.
+        OUTPUT ONLY THE BASH COMMAND. No explanations."""
     else:
-        system_prompt = """You are a Linux Bash expert. Your task is to convert the user's request (in Polish or English) into a single, valid, executable BASH command.
-
-RULES:
-1. OUTPUT ONLY THE COMMAND. Do NOT use markdown code blocks (like ```bash). Do NOT add explanations.
-2. If the user asks for a complex task, chain commands using && or ;.
-3. If the request is dangerous (e.g. "delete everything"), prefix the command with: echo "DANGEROUS: " && ...
-4. Support both Polish and English inputs effectively.
-5. USE THE CONTEXT. If the user refers to "it" or "that file", look at the PREVIOUS CONTEXT.
-"""
-
-    prompt = f"{system_prompt}\n\n{history_text}\nUser Request: {user_query}\nCommand:"
-    
-    try:
-        response = requests.post(OLLAMA_API, json={
-            "model": MODEL,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.1}
-        })
-        cmd = response.json()['response'].strip()
+        system_instruction = """You are PrivyOS System Assistant.
         
-        # Cleanup markdown
-        if cmd.startswith("```"):
-            lines = cmd.splitlines()
-            if len(lines) >= 3:
-                cmd = "\n".join(lines[1:-1])
+        MODES:
+        1. **QUERY/INFO** (User asks "What is...", "Check...", "Show me..."):
+           - You can run read-only commands silently to get info.
+           - FORMAT: `[[CHECK: command]]`
+           - IMPORTANT: After receiving "TOOL OUTPUT", you MUST provide a human-readable summary. DO NOT loop unless the previous command failed.
+
+        2. **ACTION** (User asks "Create...", "Delete...", "Move...", "Install..."):
+           - Output the BASH command directly.
+           - Do NOT use markdown.
+
+        EXAMPLE FLOW:
+        User: "How much RAM is free?"
+        Assistant: [[CHECK: free -h]]
+        System: TOOL OUTPUT: Mem: 16Gi 8Gi 8Gi ...
+        Assistant: You have 8Gi of free RAM.
+
+        3. **CHAT**:
+           - Just reply nicely.
+        """
+
+    messages = [
+        {"role": "system", "content": system_instruction},
+        {"role": "user", "content": f"{context_str}\nUser Request: {user_query}"}
+    ]
+
+    # Tool Use Loop (Increased to 4 to allow retry)
+    for _ in range(4):
+        try:
+            # Prepare prompt for non-chat API (using raw prompt mode for simplicity with this model)
+            # Or construct a chat-like structure if the model supports it better. 
+            # Qwen2.5-Coder handles raw text well.
+            
+            conversation = ""
+            for m in messages:
+                conversation += f"{m['role'].upper()}: {m['content']}\n"
+            conversation += "ASSISTANT:"
+
+            response = requests.post(OLLAMA_API, json={
+                "model": MODEL,
+                "prompt": conversation,
+                "stream": False,
+                "options": {"temperature": 0.1, "num_ctx": 4096}
+            })
+            if response.status_code != 200:
+                return {"type": "error", "content": f"API Error: {response.status_code}"}
+            
+            raw_output = response.json()['response'].strip()
+            
+            # 1. Check for Tool Use ([[CHECK: ...]])
+            check_match = re.search(r"\[\[CHECK:\s*(.*?)\]\]", raw_output, re.IGNORECASE)
+            if check_match:
+                cmd_to_run = check_match.group(1).strip()
+                print_styled(f"[Agent] Sprawdzam: {cmd_to_run}...", "yellow")
+                
+                # Execute silently
+                try:
+                    # Timeout to prevent hanging
+                    proc = subprocess.run(cmd_to_run, shell=True, capture_output=True, text=True, timeout=5)
+                    tool_output = proc.stdout[:2000] + proc.stderr[:500] # Limit output size
+                    if not tool_output.strip(): tool_output = "(No output)"
+                except subprocess.TimeoutExpired:
+                    tool_output = "Error: Command timed out."
+                except Exception as e:
+                    tool_output = f"Error executing check: {e}"
+
+                # Add result to conversation and loop again
+                messages.append({"role": "assistant", "content": raw_output})
+                messages.append({"role": "system", "content": f"TOOL OUTPUT for '{cmd_to_run}':\n{tool_output}\n\nNow answer the user's question based on this info."})
+                continue
+            
+            # 2. Cleanup Markdown for final output
+            final_cmd = raw_output
+            if final_cmd.startswith("```"):
+                lines = final_cmd.splitlines()
+                if len(lines) >= 3:
+                    final_cmd = "\n".join(lines[1:-1])
+                else:
+                    final_cmd = final_cmd.replace("```bash", "").replace("```", "")
+            final_cmd = final_cmd.strip()
+
+            # 3. Decide if it's a Command (Action) or Message (Answer)
+            # Heuristic: If it looks like a bash command (starts with common utils or contains operators) -> Suggestion
+            # If it's natural language -> Message
+            
+            # Simple heuristic: specific chars or length. 
+            # Better: if intent was 'coder', it's always code.
+            # If it contains spaces and reads like a sentence, it's a message.
+            
+            is_command = False
+            if intent == "coder":
+                is_command = True
             else:
-                cmd = cmd.replace("```bash", "").replace("```", "")
-        return cmd.strip()
-    except Exception as e:
-        return f"echo 'Błąd połączenia z mózgiem: {e}'"
+                # Common commands start
+                common_bins = ["ls", "cd", "cat", "grep", "find", "mkdir", "rm", "mv", "cp", "git", "apt", "nano", "vim", "python", "curl", "wget", "ip", "ping", "systemctl", "sudo"]
+                first_word = final_cmd.split()[0] if final_cmd else ""
+                if first_word in common_bins or "&&" in final_cmd or "|" in final_cmd or "=" in final_cmd:
+                    is_command = True
+                
+                # If it has newlines and doesn't look like a script, it might be a long explanation
+                if "\n" in final_cmd and not ("&&" in final_cmd or ";" in final_cmd):
+                     is_command = False
+
+            if is_command:
+                return {"type": "suggestion", "content": final_cmd}
+            else:
+                return {"type": "message", "content": raw_output.replace("[[CHECK:", "").strip()} # Clean up if it hallucinated partial tag
+
+        except Exception as e:
+            return {"type": "error", "content": f"Logic Error: {e}"}
+
+    return {"type": "error", "content": "Agent loop limit reached."}
 
 def print_banner():
     if HAS_RICH:
@@ -136,12 +213,12 @@ def print_banner():
                    /____/              
 """
         panel = Panel(
-            Text(title, style="cyan bold") + Text("\nPrivyOS v1.2 - Local AI Terminal", style="white"),
+            Text(title, style="cyan bold") + Text("\nPrivyOS v1.3 - Local AI Terminal", style="white"),
             border_style="cyan"
         )
         console.print(panel)
     else:
-        print(f"{CYAN}PrivyOS v1.2{RESET}")
+        print(f"{CYAN}PrivyOS v1.3{RESET}")
 
 def main():
     os.system('clear')
@@ -172,8 +249,6 @@ def main():
             mode_str = "" if ai_enabled else " [OFFLINE]"
             
             if HAS_RICH:
-                # Rich doesn't have a direct 'input' with complex styling behaving exactly like readline
-                # So we stick to standard input but color the prompt manually
                 p_style = "\033[92m" if ai_enabled else "\033[91m"
                 user_input = input(f"{p_style}PrivyOS{mode_str} \033[96m{cwd}\033[0m > ")
             else:
@@ -209,34 +284,51 @@ def main():
                 continue
 
             print("Thinking...", end="\r")
-            cmd = get_ai_command(user_input, history)
+            result = process_ai_interaction(user_input, history)
             print(" " * 20, end="\r")
             
-            if HAS_RICH:
-                console.print(Panel(Text(cmd, style="green"), title="AI Suggestion", border_style="green"))
-            else:
-                print(f"Sugestia: {CYAN}{cmd}{RESET}")
-
-            confirm = input("Wykonać? [Y/n]: ")
-            
-            if confirm.lower() in ['y', '']:
-                if cmd.startswith("cd "):
-                     try:
-                        os.chdir(cmd[3:].strip())
-                        status = "Success"
-                     except:
-                        status = "Failed"
+            if result['type'] == 'message':
+                # AI responded with text (after potentially running checks)
+                if HAS_RICH:
+                     console.print(Panel(Markdown(result['content']), title="AI Assistant", border_style="blue"))
                 else:
-                    try:
-                        result = subprocess.run(cmd, shell=True)
-                        status = "Success" if result.returncode == 0 else "Failed"
-                    except Exception as e:
-                         print_styled(f"Error: {e}", "red")
-                         status = f"Error: {e}"
+                     print(f"{CYAN}{result['content']}{RESET}")
                 
+                # Add to history as interaction
                 if len(history) >= HISTORY_LIMIT: history.pop(0)
-                history.append({'user': user_input, 'cmd': cmd, 'status': status})
+                history.append({'user': user_input, 'cmd': "(Chat/Info)", 'status': "Replied"})
+
+            elif result['type'] == 'suggestion':
+                # AI suggested a command to run
+                cmd = result['content']
+                if HAS_RICH:
+                    console.print(Panel(Text(cmd, style="green"), title="AI Suggestion", border_style="green"))
+                else:
+                    print(f"Sugestia: {CYAN}{cmd}{RESET}")
+
+                confirm = input("Wykonać? [Y/n]: ")
+                
+                if confirm.lower() in ['y', '']:
+                    if cmd.startswith("cd "):
+                         try:
+                            os.chdir(cmd[3:].strip())
+                            status = "Success"
+                         except:
+                            status = "Failed"
+                    else:
+                        try:
+                            proc_res = subprocess.run(cmd, shell=True)
+                            status = "Success" if proc_res.returncode == 0 else "Failed"
+                        except Exception as e:
+                             print_styled(f"Error: {e}", "red")
+                             status = f"Error: {e}"
+                    
+                    if len(history) >= HISTORY_LIMIT: history.pop(0)
+                    history.append({'user': user_input, 'cmd': cmd, 'status': status})
             
+            elif result['type'] == 'error':
+                 print_styled(f"AI Error: {result['content']}", "red")
+
         except KeyboardInterrupt:
             print("\nUżyj 'exit' aby wyjść.")
 

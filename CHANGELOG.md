@@ -2,6 +2,13 @@
 
 All notable changes to PrivyOS will be documented in this file.
 
+## [v1.3] - 2025-12-12
+
+### Added
+- **Autonomous Information Gathering:** The `privy` shell agent can now autonomously execute read-only system commands (e.g., `free`, `mpstat`, `cat`) in the background to answer user questions about system state (e.g., "How much RAM do I have?"). It uses a "Tool Use" loop to check data before replying.
+- **Chat Mode:** The agent can now respond with direct text messages instead of just command suggestions, allowing for more natural conversation about the system state.
+- **Persistent Ollama Model Configuration:** Implemented a `systemd` override (`/etc/systemd/system/ollama.service.d/environment.conf`) to explicitly set `OLLAMA_MODELS=/usr/share/ollama/.ollama` during the build process. This ensures that the pre-downloaded Ollama model is correctly recognized and used by the system service after installation and reboots, preventing redundant model downloads.
+
 ## [v1.2] - 2025-12-08
 
 ### Added
