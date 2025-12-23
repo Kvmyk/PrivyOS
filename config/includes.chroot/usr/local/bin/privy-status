@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+import psutil
+import requests
+from rich.console import Console
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich import box
+
+console = Console()
+
+def get_cpu_info():
+    return f"{psutil.cpu_percent()}%"
+
+def get_mem_info():
+    mem = psutil.virtual_memory()
+    return f"{mem.used // (1024**2)}MB / {mem.total // (1024**2)}MB"
+
+def get_disk_info():
+    try:
+        du = psutil.disk_usage('/')
+        return f"{du.free // (1024**3)}GB Free"
+    except:
+        return "N/A"
+
+def get_ollama_status():
+    try:
+        r = requests.get("http://localhost:11434/api/tags", timeout=0.5)
+        if r.status_code == 200:
+            models = len(r.json().get('models', []))
+            return f"[green]Online ({models} models)[/green]"
+    except:
+        pass
+    return "[red]Offline[/red]"
+
+def generate_layout():
+    layout = Layout()
+    layout.split_column(
+        Layout(name="header", size=3),
+        Layout(name="body", ratio=1)
+    )
+    
+    layout["header"].update(Panel(Text("PrivyOS Dashboard", justify="center", style="bold cyan"), box=box.ROUNDED))
+    
+    table = Table(box=box.SIMPLE, expand=True)
+    table.add_column("System Metric", style="cyan")
+    table.add_column("Value", style="white")
+    
+    table.add_row("CPU Usage", get_cpu_info())
+    table.add_row("Memory (Used/Total)", get_mem_info())
+    table.add_row("Disk Space (Free)", get_disk_info())
+    table.add_row("Ollama AI Engine", get_ollama_status())
+    
+    layout["body"].update(Panel(table, title="Resource Monitor", border_style="blue"))
+    return layout
+
+if __name__ == "__main__":
+    console.print(generate_layout())

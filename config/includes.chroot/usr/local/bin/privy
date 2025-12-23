@@ -76,6 +76,15 @@ def detect_intent(query):
 def process_ai_interaction(user_query, history):
     intent = detect_intent(user_query)
     
+    # RAG: Search local documentation
+    local_context = ""
+    try:
+        rag_res = subprocess.run(["privy-rag", user_query], capture_output=True, text=True)
+        if rag_res.stdout.strip():
+            local_context = f"\nLOCAL SYSTEM DOCUMENTATION:\n{rag_res.stdout}\n"
+    except:
+        pass
+
     # Build Context History
     context_str = ""
     if history:
@@ -85,11 +94,10 @@ def process_ai_interaction(user_query, history):
 
     # Base System Prompts
     if intent == "coder":
-        system_instruction = """You are a Coding Assistant. Generate BASH commands to CREATE files using 'cat << EOF'.
-        OUTPUT ONLY THE BASH COMMAND. No explanations."""
+        system_instruction = f"You are a Coding Assistant. Generate BASH commands to CREATE files using 'cat << EOF'.\n{local_context}\nOUTPUT ONLY THE BASH COMMAND. No explanations."
     else:
-        system_instruction = """You are PrivyOS System Assistant.
-        
+        system_instruction = f"""You are PrivyOS System Assistant.
+        {local_context}
         MODES:
         1. **QUERY/INFO** (User asks "What is...", "Check...", "Show me..."):
            - You can run read-only commands silently to get info.
@@ -213,12 +221,12 @@ def print_banner():
                    /____/              
 """
         panel = Panel(
-            Text(title, style="cyan bold") + Text("\nPrivyOS v1.3 - Local AI Terminal", style="white"),
+            Text(title, style="cyan bold") + Text("\nPrivyOS v1.4 - Local AI Terminal", style="white"),
             border_style="cyan"
         )
         console.print(panel)
     else:
-        print(f"{CYAN}PrivyOS v1.3{RESET}")
+        print(f"{CYAN}PrivyOS v1.4{RESET}")
 
 def main():
     os.system('clear')
@@ -236,7 +244,7 @@ def main():
         'whoami', 'id', 'ip', 'ifconfig', 'ping', 'top', 'htop', 'free', 
         'df', 'du', 'ps', 'kill', 'killall', 'reboot', 'poweroff', 'shutdown', 
         'clear', 'history', 'exit', 'logout', 'man', 'help', 'python', 'python3',
-        'systemctl', 'journalctl'
+        'systemctl', 'journalctl', 'privy-status', 'privypm'
     ]
 
     history = []

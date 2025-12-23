@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+DOCS_DIR = "/usr/local/share/privy/docs"
+
+def search_docs(query):
+    if not os.path.exists(DOCS_DIR):
+        return ""
+    
+    context = []
+    query_words = query.lower().split()
+    
+    for filename in os.listdir(DOCS_DIR):
+        if filename.endswith(".md") or filename.endswith(".txt"):
+            path = os.path.join(DOCS_DIR, filename)
+            with open(path, 'r') as f:
+                content = f.read()
+                # Simple keyword match
+                if any(word in content.lower() for word in query_words):
+                    context.append(f"--- DOCUMENT: {filename} ---\n{content}\n")
+    
+    return "\n".join(context)
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("")
+        sys.exit(0)
+    
+    query = " ".join(sys.argv[1:])
+    print(search_docs(query))

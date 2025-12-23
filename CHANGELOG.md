@@ -2,6 +2,19 @@
 
 All notable changes to PrivyOS will be documented in this file.
 
+## [v1.4] - 2025-12-17
+
+### Added
+- **System Dashboard (`privy-status`):** New command that displays a rich terminal dashboard with real-time CPU, RAM, Disk usage, and Ollama AI engine status.
+- **Local Knowledge Base (RAG):** Implemented a Retrieval-Augmented Generation system (`privy-rag`) that allows the AI to search local documentation (`/usr/local/share/privy/docs`) for context before answering user queries.
+- **AI Package Manager (`privypm`):** New wrapper around `apt-get` that not only installs packages but also uses AI to generate an instant "cheat sheet" with usage examples for the installed tool.
+- **Best Practices Documentation:** Added built-in docs (`best_practices.md` and `privyos_network.md`) to guide users on how to effectively interact with the AI agent.
+
+### Changed
+- **AI Package Manager (`privypm`):** Increased the AI cheat sheet generation timeout to 180 seconds to accommodate slower hardware and limited the output length to under 200 words for better readability.
+- **Package List:** Added `python3-psutil` to the core package list to support system monitoring features.
+- **Shell Integration:** Updated `privy` shell to recognize `privy-status` and `privypm` as native commands and to inject RAG context into the AI system prompt.
+
 ## [v1.3] - 2025-12-12
 
 ### Added

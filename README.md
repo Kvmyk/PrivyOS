@@ -12,7 +12,7 @@ PrivyOS is a custom Linux distribution based on **Debian 12 (Bookworm)**, engine
 *   **Privy Shell:** A custom default shell that replaces standard Bash. It translates natural language requests into executable system commands.
 *   **100% Offline & Private:** All AI computations happen locally on your CPU. No data leaves your machine.
 *   **Live System:** Runs directly from a USB drive (Live ISO).
-*   **Context Memory (v1.1):** The assistant remembers your recent command history, allowing for follow-up questions and corrections.
+*   **Context Memory (v1.4):** The assistant remembers your recent command history, allowing for follow-up questions and corrections.
 
 ## How to Use
 
