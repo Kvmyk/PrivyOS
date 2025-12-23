@@ -46,7 +46,7 @@ Execute? [Y/n]: y
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/your-username/privyos-build.git
+    git clone https://github.com/Kvmyk/privyos-build.git
     cd privyos-build
     ```
 
